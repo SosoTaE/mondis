@@ -59,10 +59,11 @@ impl Engine {
     }
 
     pub fn get_filtered(&self, filter: &crate::models::FilterQuery) -> Vec<(String, Value)> {
-        let mut result: Vec<(String, Value)> =
-            self.data.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let mut result: Vec<(String, Value)> = self.data
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
-        // Shrink the set first so the sort runs on as few elements as possible.
         if let Some(key) = filter.get_key() {
             result.retain(|(k, _)| k == key);
         }
@@ -71,21 +72,32 @@ impl Engine {
             result.retain(|(_, value)| self.matches(value, params));
         }
 
-        // Sort the reduced set, computing each element's sort key only once
-        // (decorate–sort–undecorate) instead of re-running find_nested per comparison.
         if let Some(sort) = filter.get_sort() {
             if let Some(direction) = filter.get_sort_direction() {
                 let mut decorated: Vec<(Value, (String, Value))> = result
                     .into_iter()
-                    .map(|entry| (self.find_nested(&entry.1, sort), entry))
+                    .filter_map(|entry| {
+                        let key = self.find_nested(&entry.1, sort);
+                        if key.is_null() {
+                            None
+                        } else {
+                            Some((key, entry))
+                        }
+                    })
                     .collect();
 
-                decorated.sort_by(|a, b| match direction {
-                    crate::models::SortDirection::Ascending => Self::compare_values(&a.0, &b.0),
-                    crate::models::SortDirection::Descending => Self::compare_values(&b.0, &a.0),
+                decorated.sort_by(|a, b| {
+                    match direction {
+                        crate::models::SortDirection::Ascending => Self::compare_values(&a.0, &b.0),
+                        crate::models::SortDirection::Descending =>
+                            Self::compare_values(&b.0, &a.0),
+                    }
                 });
 
-                result = decorated.into_iter().map(|(_, entry)| entry).collect();
+                result = decorated
+                    .into_iter()
+                    .map(|(_, entry)| entry)
+                    .collect();
             }
         }
 
@@ -131,7 +143,7 @@ impl Engine {
         }
     }
 
-    pub fn find_field(&self, current_data: &Value ,query: &Value) -> Value {
+    pub fn find_field(&self, current_data: &Value, query: &Value) -> Value {
         self.find_nested(current_data, query)
     }
 
